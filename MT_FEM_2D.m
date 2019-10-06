@@ -1,5 +1,6 @@
-%%% ��ص�Ŷ�ά����Ԫ��״����matlab����TM������
-%%% ���������ھ��ε�Ԫ��˫���β�ֵ���޵�Ԫ������ά��ص������
+%%% 大地电磁二维有限元层状介质matlab程序（TM极化）
+%%% 本程序用于矩形单元、双二次插值有限单元法求解二维大地电磁问题
+%%% 本程序根据徐世浙院士《地球物理中的有限单元法》一书的推导进行编写，详细的推导请阅读该书
 clear
 x=[-45 -40 -35 -30 -25 -22.5 -20 -17.5 -15 -12.5 -10 -7.5 -5 -2.5 0 2.5 5 7.5 10 12.5 15 17.5 20 22.5 25 30 35 40 45];
 y=[0 1 2 3 4 5 8 11 14 17 20 23 26 29 32 35 41 50];
@@ -12,19 +13,19 @@ for i=1:size(y,2)-1
     B1(i)=y(i+1)-y(i);
 end
 
-Nx=size(A1,1);         %ģ�͵�x����������
-Ny=size(B1,1);         %ģ�͵�y����������
-NP=3*Nx*Ny+2*Nx+2*Ny+1;%�ڵ�����
-NE=Nx*Ny;              %��Ԫ����
-rho=zeros(NE,1);       %������Ԫ�ĵ�����
+Nx=size(A1,1);         %模型的x方向网格数
+Ny=size(B1,1);         %模型的y方向网格数
+NP=3*Nx*Ny+2*Nx+2*Ny+1;%节点总数
+NE=Nx*Ny;              %单元总数
+rho=zeros(NE,1);       %各个单元的电阻率
 A=zeros(NE,1);
 B=zeros(NE,1);
 
-%%%��ÿ����Ԫ��8���ڵ���
+%%%给每个单元的8个节点编号
 
 for IX=1:Nx
     for IY=1:Ny
-        N=(IX-1)*Ny+IY;%NΪ��Ԫ��ţ�(1,N)������N����Ԫ�ĵ�һ���ڵ�
+        N=(IX-1)*Ny+IY;%N为单元编号，(1,N)代表第N个单元的第一个节点
         N1=(IX-1)*(3*Ny+2)+2*IY-1;
         ME(1,N)=N1;
         ME(2,N)=N1+2;
@@ -39,7 +40,7 @@ for IX=1:Nx
     end
 end
 
-%��ģ�͸�����Ԫ�������ʵ�ֵ
+%给模型各个单元赋电阻率的值
 for IX=1:10
     for IY=1:Ny
         N=(IX-1)*Ny+IY;            
@@ -58,14 +59,16 @@ for IX=19:Nx
         rho(N)=1;
     end
 end
-%%%A��B�д洢��ֵΪÿ����Ԫ�ĳ���������ʵ�����������ʷֵ�������ȷ��
+%%%A和B中存储的值为每个单元的长宽，根据实际区域网格剖分的坐标来确定
 
-f=[0.001 0.005 0.01 0.02 0.025 0.05 0.1 0.125 0.2 0.25 0.5 1 1.25 2 2.5 5 10 12.5 20 25 50 100 500 1000];  %�����Ƶ��
+f=[0.001 0.005 0.01 0.02 0.025 0.05 0.1 0.125 0.2 0.25 0.5 1 1.25 2 2.5 5 10 12.5 20 25 50 100 500 1000];  %计算的频点
 for ff=1:size(f,2)
     K1=zeros(NP);
     K2=zeros(NP);
     K3=zeros(NP);
     P=zeros(NP,1);
+    
+ %%%%形成单元矩阵K1e %%%%
     for h=1:NE
         BA=B(h)/A(h)/90;
         AB=A(h)/B(h)/90;
@@ -79,12 +82,12 @@ for ff=1:size(f,2)
             NJ=ME(j,h);
             for k=1:8
                 NK=ME(k,h);
-                K1(NJ,NK)=K1(NJ,NK)+K(j,k)*rho(h);   %rho(h)Ϊ��Ԫh�ĵ�����ֵ
+                K1(NJ,NK)=K1(NJ,NK)+K(j,k)*rho(h);   %rho(h)为单元h的电阻率值
             end
         end
     end
     
-   %%%%�г̵�ԪK2e %%%%
+   %%%%形成单元矩阵K2e %%%%
    mu=(4e-7)*pi;
    w=2*pi*f(ff);
    m=sqrt(-1)*w*mu;
@@ -100,6 +103,8 @@ for ff=1:size(f,2)
            end
        end
    end
+   
+    %%%%形成单元矩阵K3e %%%%
    for h1=Ny:Ny:NE
        i=ME(2,h1); j=ME(3,h1);k=ME(4,h1);s=ME(1,h1);
        a=ME(6,h1); b=ME(7,h1);c=ME(8,h1);d=ME(5,h1);
@@ -125,29 +130,30 @@ for ff=1:size(f,2)
          K3(a,a)=K3(a,a)+Kaa;
    end
    
-   v=sparse(K1-K2+K3);            %��װ����նȾ���
+    %组装总体系数矩阵
+   v=sparse(K1-K2+K3);           
    
    
    
    clear i j k s a b c d mj mk Kii Kjj Kkk Kij Kki Ksi Kaa Kab
    
-   %%%%�����ϱ߽�ֵu|AB=1������������Ժʿ�ġ����������е�����Ԫ��һ�飬Ϊ����ⷽ����д���
+   %%%%带入上边界值u|AB=1，按照徐世浙院士的《地球物理中的有限元》一书，为了求解方便进行处理
    
    for i=1:Nx+1
-       j=1+(i-1)*(3*Ny+2);     %%������AB�߽��ϵĵ�Ԫ�ڵ�
+       j=1+(i-1)*(3*Ny+2);     %%所有在AB边界上的单元节点
        v(j,j)=v(j,j)*10^10;
        P(j)=v(j,j)*1;
    end
    
    for i=1:Nx
-       j=2*Ny+2+(i-1)*(3*Ny+2);   %%����AB�߽��ϵ��е�
+       j=2*Ny+2+(i-1)*(3*Ny+2);   %%所有AB边界上的中点
        v(j,j)=v(j,j)*10^10;
        P(j)=v(j,j);
    end
    
    
    
-   %%%������Է�����%%%%%
+   %%%求解线性方程组%%%%%
    tol=1e-20;
    [L,U]=lu(v);
    maxit=100;
@@ -156,7 +162,7 @@ for ff=1:size(f,2)
 end
 
 
-%%%%%%%�����ӵ����ʺ��迹��λ%%%%%
+%%%%%%%计算视电阻率和阻抗相位%%%%%
 vect=1:(3*Ny+2):(NP-2*Ny);
 u1=zeros(size(vect,2),size(f,2));
 u2=zeros(size(vect,2),size(f,2));
@@ -175,8 +181,8 @@ for j=1:size(f,2)
         u3(i,j)=ant(vect(i)+2,j);
         u4(i,j)=ant(vect(i)+3,j);
         ux(i,j)=(-11*u1(i,j)+18*u2(i,j)-9*u3(i,j)+2*u4(i,j))/(2*l);
-        z(i,j)=(rho(1)*ux(i,j))/(ant(vect(i),j));                  %�迹
-        pc(i,j)=(z(i,j)^2)/(w*mu);    %�ӵ�����
-        phase(i,j)=-atan(imag(z(i,j))/real(z(i,j)))*180/pi;      %�迹��λ
+        z(i,j)=(rho(1)*ux(i,j))/(ant(vect(i),j));                  %阻抗
+        pc(i,j)=(z(i,j)^2)/(w*mu);    %视电阻率
+        phase(i,j)=-atan(imag(z(i,j))/real(z(i,j)))*180/pi;      %阻抗相位
     end
 end
